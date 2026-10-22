@@ -112,7 +112,8 @@
   <script type="importmap">
   {
     "imports": {
-      "three": "https://unpkg.com/three@0.152.2/build/three.module.js",
+      "three": "https://unpkg.com/three@0.160.0/build/three.module.js",
+      "three/addons/": "https://unpkg.com/three@0.160.0/examples/jsm/",
       "mindar-image-three": "https://cdn.jsdelivr.net/npm/mind-ar@1.2.5/dist/mindar-image-three.prod.js"
     }
   }
@@ -136,6 +137,21 @@
   <script type="module">
     import * as THREE from 'three';
     import { MindARThree } from 'mindar-image-three';
+
+    window.addEventListener("error", (e) => {
+      console.error("Window error:", e);
+      const el = document.getElementById("status");
+      if (el) el.textContent = "Error: " + (e.message || e);
+      const btn = document.getElementById("start-button");
+      if (btn) btn.disabled = false;
+    });
+    window.addEventListener("unhandledrejection", (e) => {
+      console.error("Unhandled rejection:", e);
+      const el = document.getElementById("status");
+      if (el) el.textContent = "Error: " + (e.reason?.message || e.reason || e);
+      const btn = document.getElementById("start-button");
+      if (btn) btn.disabled = false;
+    });
 
     const TARGETS_FILE = "targets.mind";
     // Dimensiones del plano de video:
