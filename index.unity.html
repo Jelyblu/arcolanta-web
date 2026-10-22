@@ -1,0 +1,207 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+  <title>ARColanta - AR</title>
+  <style>
+    html, body { margin: 0; padding: 0; width: 100%; height: 100%; overflow: hidden; background: #000; }
+
+    /* Video de la cámara: capa de fondo */
+    #camvideo {
+      position: fixed; inset: 0;
+      width: 100%; height: 100%;
+      object-fit: cover;
+      z-index: 0;
+    }
+
+    /* Canvas de Unity: encima del video, con fondo transparente */
+    #unity-canvas {
+      position: fixed; inset: 0;
+      width: 100%; height: 100%;
+      background: transparent;
+      z-index: 1;
+    }
+
+    #overlay {
+      position: fixed; inset: 0; z-index: 2;
+      display: flex; flex-direction: column;
+      align-items: center; justify-content: center;
+      background: #1a0533; color: #fff;
+      font-family: sans-serif; text-align: center;
+      transition: opacity 0.4s;
+    }
+    #overlay.hidden { opacity: 0; pointer-events: none; }
+
+    #start-button {
+      padding: 14px 40px; font-size: 18px; border: none; border-radius: 30px;
+      background: #8a2be2; color: #fff; cursor: pointer; display: none;
+    }
+    #status { margin-top: 16px; font-size: 14px; opacity: 0.8; }
+
+    #scan-hint {
+      pointer-events: none;
+      position: fixed; bottom: 24px; left: 0; right: 0; z-index: 2;
+      text-align: center; color: #fff; font-family: sans-serif;
+      text-shadow: 0 1px 4px #000; display: none;
+    }
+  </style>
+</head>
+<body>
+  <video id="camvideo" autoplay muted playsinline></video>
+  <canvas id="unity-canvas" tabindex="-1"></canvas>
+
+  <div id="overlay">
+    <h2>Misión Colanta 🚀</h2>
+    <button id="start-button">Iniciar AR</button>
+    <div id="status">Cargando experiencia...</div>
+  </div>
+  <div id="scan-hint">Apunta la cámara a la página de "Tu tripulación"</div>
+
+  <script src="Build/BuildWeb.loader.js"></script>
+  <script>
+    // Nombre EXACTO del GameObject en la escena de Unity que tiene MindARBridge.cs
+    var UNITY_RECEIVER = "MindARBridge";
+    var TARGETS_FILE = "targets.mind"; // compilado desde la imagen del libro
+    // mindar-image.prod.js es un módulo ES: hay que cargarlo con import() y sus
+    // chunks (controller-*.js, ui-*.js) se resuelven relativos a esta URL.
+    var MINDAR_URL = "https://cdn.jsdelivr.net/npm/mind-ar@1.2.5/dist/mindar-image.prod.js";
+
+    var unityInstance = null;
+    var overlay = document.getElementById("overlay");
+    var statusEl = document.getElementById("status");
+    var startBtn = document.getElementById("start-button");
+    var video = document.getElementById("camvideo");
+
+    // ---------- utilidades de matrices 4x4 (column-major, como three.js) ----------
+    function mul4(a, b) {
+      var out = new Array(16);
+      for (var c = 0; c < 4; c++)
+        for (var r = 0; r < 4; r++) {
+          var s = 0;
+          for (var k = 0; k < 4; k++) s += a[k * 4 + r] * b[c * 4 + k];
+          out[c * 4 + r] = s;
+        }
+      return out;
+    }
+
+    // ---------- carga de Unity ----------
+    createUnityInstance(document.querySelector("#unity-canvas"), {
+      dataUrl: "Build/BuildWeb.data.unityweb",
+      frameworkUrl: "Build/BuildWeb.framework.js.unityweb",
+      codeUrl: "Build/BuildWeb.wasm.unityweb",
+      streamingAssetsUrl: "StreamingAssets",
+      companyName: "DefaultCompany",
+      productName: "ARColanta",
+      productVersion: "0.1.0"
+      // El canvas es opaco: el feed de la cámara se dibuja DENTRO de Unity
+      // (WebCamBackground + ARColantaVideo.jslib). El alfa del framebuffer
+      // de URP/Render Graph está roto en WebGL, no depender de él.
+    }, function (progress) {
+      statusEl.textContent = "Cargando... " + Math.round(progress * 100) + "%";
+    }).then(function (instance) {
+      unityInstance = instance;
+      statusEl.textContent = "";
+      startBtn.style.display = "block";
+      if (location.search.indexOf("autostart") >= 0) {
+        startBtn.disabled = true;
+        startAR().catch(function (e) { statusEl.textContent = "Error: " + e.message; });
+      }
+    }).catch(function (err) {
+      statusEl.textContent = "Error cargando Unity: " + err;
+    });
+
+    startBtn.addEventListener("click", function () {
+      startBtn.disabled = true;
+      statusEl.textContent = "Encendiendo cámara...";
+      startAR().catch(function (err) {
+        statusEl.textContent = "Error: " + err.message;
+        startBtn.disabled = false;
+      });
+    });
+
+    // FOV vertical que la cámara de Unity debe usar para calzar con el video
+    // recortado por object-fit: cover. MindAR usa una proyección fija de 45°;
+    // al recortar el video en pantalla, el FOV efectivo cambia por este factor.
+    function sendFov(proj) {
+      var vw = video.videoWidth, vh = video.videoHeight;
+      var cw = window.innerWidth, ch = window.innerHeight;
+      var coverScale = Math.max(cw / vw, ch / vh);
+      var fovAdjust = ch / (vh * coverScale);
+      var fovY = 2 * Math.atan((1 / proj[5]) * fovAdjust) * 180 / Math.PI;
+      unityInstance.SendMessage(UNITY_RECEIVER, "SetCameraFov", fovY.toString());
+    }
+
+    // ---------- tracking con MindAR ----------
+    async function startAR() {
+      await import(MINDAR_URL); // define window.MINDAR.IMAGE
+
+      var stream = await navigator.mediaDevices.getUserMedia({
+        audio: false,
+        video: { facingMode: "environment", width: { ideal: 1280 }, height: { ideal: 720 } }
+      });
+      video.srcObject = stream;
+      await new Promise(function (resolve) {
+        video.onloadedmetadata = function () { video.play(); resolve(); };
+      });
+      // MindAR lee los ATRIBUTOS width/height del elemento (no videoWidth):
+      // sin esto, drawImage no dibuja nada y el tracking falla en silencio.
+      video.setAttribute("width", video.videoWidth);
+      video.setAttribute("height", video.videoHeight);
+
+      // Unity dibuja este mismo video como fondo (un solo stream de cámara,
+      // compartido con el tracking — clave para iOS).
+      window.arVideo = video;
+      unityInstance.SendMessage(UNITY_RECEIVER, "OnVideoReady",
+        video.videoWidth + "," + video.videoHeight);
+
+      statusEl.textContent = "Preparando tracking...";
+
+      var postMatrix = null;
+
+      var controller = new window.MINDAR.IMAGE.Controller({
+        inputWidth: video.videoWidth,
+        inputHeight: video.videoHeight,
+        // Filtro OneEuro de MindAR: menos jitter
+        filterMinCF: 0.0001,
+        filterBeta: 0.001,
+        onUpdate: function (data) {
+          if (data.type !== "updateMatrix" || !unityInstance) return;
+          if (data.targetIndex !== 0) return;
+
+          if (data.worldMatrix === null) {
+            // MindAR avisa la pérdida UNA sola vez; el bridge además tiene
+            // un timeout por si este mensaje se pierde.
+            unityInstance.SendMessage(UNITY_RECEIVER, "OnTargetLost");
+          } else {
+            // postMatrix re-centra y escala igual que mindar-image-three:
+            // origen en el centro del marcador, escala = ancho en px.
+            var m = mul4(data.worldMatrix, postMatrix);
+            unityInstance.SendMessage(UNITY_RECEIVER, "OnTargetUpdate", m.join(","));
+          }
+        }
+      });
+
+      var result = await controller.addImageTargets(TARGETS_FILE);
+      var dims = result.dimensions[0]; // [ancho, alto] del marcador en px
+      var w = dims[0], h = dims[1];
+      postMatrix = [
+        w, 0, 0, 0,
+        0, w, 0, 0,
+        0, 0, w, 0,
+        w / 2, h / 2, 0, 1
+      ];
+
+      var proj = controller.getProjectionMatrix();
+      sendFov(proj);
+      window.addEventListener("resize", function () { sendFov(proj); });
+
+      await controller.dummyRun(video);
+
+      overlay.classList.add("hidden");
+      document.getElementById("scan-hint").style.display = "block";
+      controller.processVideo(video);
+    }
+  </script>
+</body>
+</html>
