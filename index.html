@@ -3,7 +3,31 @@
 <head>
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+  <meta http-equiv="Cache-Control" content="no-cache, no-store, must-revalidate">
+  <meta http-equiv="Pragma" content="no-cache">
+  <meta http-equiv="Expires" content="0">
   <title>ARColanta - AR</title>
+  <script>
+    // Versión activa: si el usuario entra sin este parámetro, se redirige automáticamente
+    // para forzar al navegador a ignorar la caché previa de GitHub Pages y archivos locales.
+    const APP_VERSION = "2.0.1";
+    const currentV = new URLSearchParams(window.location.search).get("v");
+    if (currentV !== APP_VERSION) {
+      if ('serviceWorker' in navigator) {
+        navigator.serviceWorker.getRegistrations().then(regs => {
+          for (const r of regs) r.unregister();
+        });
+      }
+      if ('caches' in window) {
+        caches.keys().then(keys => {
+          for (const k of keys) caches.delete(k);
+        });
+      }
+      const url = new URL(window.location.href);
+      url.searchParams.set("v", APP_VERSION);
+      window.location.replace(url.href);
+    }
+  </script>
   <style>
     html, body {
       margin: 0; padding: 0;
@@ -153,7 +177,7 @@
       if (btn) btn.disabled = false;
     });
 
-    const TARGETS_FILE = "targets.mind";
+    const TARGETS_FILE = "targets.mind?v=" + APP_VERSION;
     // Dimensiones del plano de video:
     // El marcador base tiene ancho = 1.0. El panel anterior era de ~0.55.
     // Con 80% más grande: 0.55 * 1.8 ≈ 1.0 (1.0 x 1.0, perfectamente centrado).
@@ -172,7 +196,7 @@
 
     // ---------- Configuración de videos (solo video normal con fondo) ----------
     const idleVideo = document.createElement("video");
-    idleVideo.src = "StreamingAssets/carlota_idle_fondo.mp4";
+    idleVideo.src = "StreamingAssets/carlota_idle_fondo.mp4?v=" + APP_VERSION;
     idleVideo.crossOrigin = "anonymous";
     idleVideo.loop = true;
     idleVideo.muted = true;
@@ -182,7 +206,7 @@
     idleVideo.preload = "auto";
 
     const poderVideo = document.createElement("video");
-    poderVideo.src = "StreamingAssets/carlota_poder_fondo.mp4";
+    poderVideo.src = "StreamingAssets/carlota_poder_fondo.mp4?v=" + APP_VERSION;
     poderVideo.crossOrigin = "anonymous";
     poderVideo.loop = false;
     poderVideo.muted = true;
