@@ -177,6 +177,39 @@
       if (btn) btn.disabled = false;
     });
 
+    // ---------- Cámara trasera principal (fix iPhone Pro / 17 Pro Max) ----------
+    // Con facingMode:"environment", Safari en iPhone Pro suele abrir la lente
+    // ULTRA GRAN ANGULAR. MindAR asume el FOV de una cámara normal, así que la
+    // pose sale con escala errada y el video se ve muy pequeño sobre la página.
+    // MindARThree abre la cámara por su cuenta, así que se envuelve getUserMedia
+    // para forzar la lente principal ("Back Camera") cuando se pide la trasera.
+    (function forceMainBackCamera() {
+      const md = navigator.mediaDevices;
+      if (!md || !md.getUserMedia || !md.enumerateDevices) return;
+      const original = md.getUserMedia.bind(md);
+      md.getUserMedia = async function (constraints) {
+        const stream = await original(constraints);
+        try {
+          const v = constraints && constraints.video;
+          const wantsBack = v && typeof v === "object" && v.facingMode &&
+            JSON.stringify(v.facingMode).indexOf("environment") >= 0 && !v.deviceId;
+          if (!wantsBack) return stream;
+          const devices = await md.enumerateDevices();
+          const main = devices.find(d => d.kind === "videoinput" && /^back camera$/i.test(d.label));
+          const current = stream.getVideoTracks()[0].getSettings().deviceId;
+          if (main && main.deviceId !== current) {
+            stream.getTracks().forEach(t => t.stop());
+            const video = Object.assign({}, v, { deviceId: { exact: main.deviceId } });
+            delete video.facingMode;
+            return await original(Object.assign({}, constraints, { video }));
+          }
+        } catch (e) {
+          console.warn("No se pudo forzar la cámara principal:", e);
+        }
+        return stream;
+      };
+    })();
+
     const TARGETS_FILE = "targets.mind?v=" + APP_VERSION;
     // Dimensiones del plano de video:
     // El marcador base tiene ancho = 1.0. El panel anterior era de ~0.55.
