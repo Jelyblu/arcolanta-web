@@ -10,7 +10,7 @@
   <script>
     // Versión activa: si el usuario entra sin este parámetro, se redirige automáticamente
     // para forzar al navegador a ignorar la caché previa de GitHub Pages y archivos locales.
-    const APP_VERSION = "2.0.2";
+    const APP_VERSION = "2.0.3";
     const currentV = new URLSearchParams(window.location.search).get("v");
     if (currentV !== APP_VERSION) {
       if ('serviceWorker' in navigator) {
@@ -212,9 +212,8 @@
 
     const TARGETS_FILE = "targets.mind?v=" + APP_VERSION;
     // Dimensiones del plano de video:
-    // El marcador base tiene ancho = 1.0. El panel anterior era de ~0.55.
-    // Con 80% más grande: 0.55 * 1.8 ≈ 1.0 (1.0 x 1.0, perfectamente centrado).
-    const VIDEO_SCALE = 1.0;
+    // El video original en la comparativa era 0.6. El triple de grande es 1.8 (3x).
+    const VIDEO_SCALE = 1.8;
 
     const overlay = document.getElementById("overlay");
     const statusEl = document.getElementById("status");
