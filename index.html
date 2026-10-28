@@ -3,399 +3,244 @@
 <head>
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
-  <meta http-equiv="Cache-Control" content="no-cache, no-store, must-revalidate">
-  <meta http-equiv="Pragma" content="no-cache">
-  <meta http-equiv="Expires" content="0">
   <title>ARColanta - AR</title>
-  <script>
-    // Versión activa: si el usuario entra sin este parámetro, se redirige automáticamente
-    // para forzar al navegador a ignorar la caché previa de GitHub Pages y archivos locales.
-    const APP_VERSION = "2.0.3";
-    const currentV = new URLSearchParams(window.location.search).get("v");
-    if (currentV !== APP_VERSION) {
-      if ('serviceWorker' in navigator) {
-        navigator.serviceWorker.getRegistrations().then(regs => {
-          for (const r of regs) r.unregister();
-        });
-      }
-      if ('caches' in window) {
-        caches.keys().then(keys => {
-          for (const k of keys) caches.delete(k);
-        });
-      }
-      const url = new URL(window.location.href);
-      url.searchParams.set("v", APP_VERSION);
-      window.location.replace(url.href);
-    }
-  </script>
   <style>
-    html, body {
-      margin: 0; padding: 0;
-      width: 100%; height: 100%;
-      overflow: hidden;
-      background: #000;
-      font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
-    }
+    html, body { margin: 0; padding: 0; width: 100%; height: 100%; overflow: hidden; background: #000; }
 
-    #ar-container {
+    /* Video de la cámara: capa de fondo */
+    #camvideo {
       position: fixed; inset: 0;
       width: 100%; height: 100%;
-      overflow: hidden;
+      object-fit: cover;
+      z-index: 0;
     }
 
-    /* Video de la cámara y canvas de Three.js administrados por MindAR */
-    #ar-container video, #ar-container canvas {
-      position: absolute; inset: 0;
+    /* Canvas de Unity: encima del video, con fondo transparente */
+    #unity-canvas {
+      position: fixed; inset: 0;
       width: 100%; height: 100%;
-      object-fit: cover;
+      background: transparent;
+      z-index: 1;
     }
 
     #overlay {
-      position: fixed; inset: 0; z-index: 10;
+      position: fixed; inset: 0; z-index: 2;
       display: flex; flex-direction: column;
       align-items: center; justify-content: center;
       background: #1a0533; color: #fff;
-      text-align: center;
-      padding: 24px;
-      box-sizing: border-box;
-      transition: opacity 0.4s ease;
+      font-family: sans-serif; text-align: center;
+      transition: opacity 0.4s;
     }
-    #overlay.hidden {
-      opacity: 0;
-      pointer-events: none;
-    }
-
-    #overlay h2 {
-      margin: 0 0 20px 0;
-      font-size: 28px;
-      font-weight: 700;
-    }
+    #overlay.hidden { opacity: 0; pointer-events: none; }
 
     #start-button {
-      padding: 14px 40px;
-      font-size: 18px;
-      font-weight: 600;
-      border: none;
-      border-radius: 30px;
-      background: #8a2be2;
-      color: #fff;
-      cursor: pointer;
-      box-shadow: 0 4px 15px rgba(138, 43, 226, 0.4);
-      transition: transform 0.2s, background 0.2s;
+      padding: 14px 40px; font-size: 18px; border: none; border-radius: 30px;
+      background: #8a2be2; color: #fff; cursor: pointer; display: none;
     }
-    #start-button:active {
-      transform: scale(0.96);
-    }
-    #start-button:disabled {
-      opacity: 0.6;
-      cursor: not-allowed;
-    }
-
-    #status {
-      margin-top: 18px;
-      font-size: 14px;
-      opacity: 0.85;
-      min-height: 20px;
-    }
+    #status { margin-top: 16px; font-size: 14px; opacity: 0.8; }
 
     #scan-hint {
       pointer-events: none;
-      position: fixed; bottom: 28px; left: 20px; right: 20px;
-      z-index: 5;
-      text-align: center; color: #fff;
-      font-size: 16px;
-      font-weight: 500;
-      text-shadow: 0 2px 6px rgba(0, 0, 0, 0.8);
-      background: rgba(0, 0, 0, 0.45);
-      padding: 10px 18px;
-      border-radius: 20px;
-      display: none;
-      backdrop-filter: blur(4px);
-      -webkit-backdrop-filter: blur(4px);
-    }
-
-    #interaction-hint {
-      pointer-events: none;
-      position: fixed; top: 20px; left: 0; right: 0;
-      z-index: 5;
-      text-align: center; color: #fff;
-      font-size: 14px;
-      font-weight: 500;
-      text-shadow: 0 2px 6px rgba(0, 0, 0, 0.8);
-      display: none;
-    }
-    #interaction-hint span {
-      background: rgba(138, 43, 226, 0.7);
-      padding: 8px 16px;
-      border-radius: 16px;
-      backdrop-filter: blur(4px);
-      -webkit-backdrop-filter: blur(4px);
+      position: fixed; bottom: 24px; left: 0; right: 0; z-index: 2;
+      text-align: center; color: #fff; font-family: sans-serif;
+      text-shadow: 0 1px 4px #000; display: none;
     }
   </style>
-
-  <script type="importmap">
-  {
-    "imports": {
-      "three": "https://unpkg.com/three@0.160.0/build/three.module.js",
-      "three/addons/": "https://unpkg.com/three@0.160.0/examples/jsm/",
-      "mindar-image-three": "https://cdn.jsdelivr.net/npm/mind-ar@1.2.5/dist/mindar-image-three.prod.js"
-    }
-  }
-  </script>
 </head>
 <body>
-  <div id="ar-container"></div>
+  <video id="camvideo" autoplay muted playsinline></video>
+  <canvas id="unity-canvas" tabindex="-1"></canvas>
 
   <div id="overlay">
     <h2>Misión Colanta 🚀</h2>
     <button id="start-button">Iniciar AR</button>
-    <div id="status"></div>
+    <div id="status">Cargando experiencia...</div>
   </div>
-
-  <div id="interaction-hint">
-    <span>Toca a Carlota para activar su poder ✨</span>
-  </div>
-
   <div id="scan-hint">Apunta la cámara a la página de "Tu tripulación"</div>
 
-  <script type="module">
-    import * as THREE from 'three';
-    import { MindARThree } from 'mindar-image-three';
+  <script src="Build/BuildWeb.loader.js"></script>
+  <script>
+    // Nombre EXACTO del GameObject en la escena de Unity que tiene MindARBridge.cs
+    var UNITY_RECEIVER = "MindARBridge";
+    var TARGETS_FILE = "targets.mind"; // compilado desde la imagen del libro
+    // mindar-image.prod.js es un módulo ES: hay que cargarlo con import() y sus
+    // chunks (controller-*.js, ui-*.js) se resuelven relativos a esta URL.
+    var MINDAR_URL = "https://cdn.jsdelivr.net/npm/mind-ar@1.2.5/dist/mindar-image.prod.js";
 
-    window.addEventListener("error", (e) => {
-      console.error("Window error:", e);
-      const el = document.getElementById("status");
-      if (el) el.textContent = "Error: " + (e.message || e);
-      const btn = document.getElementById("start-button");
-      if (btn) btn.disabled = false;
-    });
-    window.addEventListener("unhandledrejection", (e) => {
-      console.error("Unhandled rejection:", e);
-      const el = document.getElementById("status");
-      if (el) el.textContent = "Error: " + (e.reason?.message || e.reason || e);
-      const btn = document.getElementById("start-button");
-      if (btn) btn.disabled = false;
-    });
+    var unityInstance = null;
+    var overlay = document.getElementById("overlay");
+    var statusEl = document.getElementById("status");
+    var startBtn = document.getElementById("start-button");
+    var video = document.getElementById("camvideo");
 
-    // ---------- Cámara trasera principal (fix iPhone Pro / 17 Pro Max) ----------
-    // Con facingMode:"environment", Safari en iPhone Pro suele abrir la lente
-    // ULTRA GRAN ANGULAR. MindAR asume el FOV de una cámara normal, así que la
-    // pose sale con escala errada y el video se ve muy pequeño sobre la página.
-    // MindARThree abre la cámara por su cuenta, así que se envuelve getUserMedia
-    // para forzar la lente principal ("Back Camera") cuando se pide la trasera.
-    (function forceMainBackCamera() {
-      const md = navigator.mediaDevices;
-      if (!md || !md.getUserMedia || !md.enumerateDevices) return;
-      const original = md.getUserMedia.bind(md);
-      md.getUserMedia = async function (constraints) {
-        const stream = await original(constraints);
-        try {
-          const v = constraints && constraints.video;
-          const wantsBack = v && typeof v === "object" && v.facingMode &&
-            JSON.stringify(v.facingMode).indexOf("environment") >= 0 && !v.deviceId;
-          if (!wantsBack) return stream;
-          const devices = await md.enumerateDevices();
-          const main = devices.find(d => d.kind === "videoinput" && /^back camera$/i.test(d.label));
-          const current = stream.getVideoTracks()[0].getSettings().deviceId;
-          if (main && main.deviceId !== current) {
-            stream.getTracks().forEach(t => t.stop());
-            const video = Object.assign({}, v, { deviceId: { exact: main.deviceId } });
-            delete video.facingMode;
-            return await original(Object.assign({}, constraints, { video }));
-          }
-        } catch (e) {
-          console.warn("No se pudo forzar la cámara principal:", e);
+    // ---------- utilidades de matrices 4x4 (column-major, como three.js) ----------
+    function mul4(a, b) {
+      var out = new Array(16);
+      for (var c = 0; c < 4; c++)
+        for (var r = 0; r < 4; r++) {
+          var s = 0;
+          for (var k = 0; k < 4; k++) s += a[k * 4 + r] * b[c * 4 + k];
+          out[c * 4 + r] = s;
         }
-        return stream;
-      };
-    })();
-
-    const TARGETS_FILE = "targets.mind?v=" + APP_VERSION;
-    // Dimensiones del plano de video:
-    // El video original en la comparativa era 0.6. El triple de grande es 1.8 (3x).
-    const VIDEO_SCALE = 1.8;
-
-    const overlay = document.getElementById("overlay");
-    const statusEl = document.getElementById("status");
-    const startBtn = document.getElementById("start-button");
-    const scanHint = document.getElementById("scan-hint");
-    const interactionHint = document.getElementById("interaction-hint");
-    const container = document.getElementById("ar-container");
-
-    let isTracking = false;
-    let isPlayingPoder = false;
-    let mindarThree = null;
-
-    // ---------- Configuración de videos (solo video normal con fondo) ----------
-    const idleVideo = document.createElement("video");
-    idleVideo.src = "StreamingAssets/carlota_idle_fondo.mp4?v=" + APP_VERSION;
-    idleVideo.crossOrigin = "anonymous";
-    idleVideo.loop = true;
-    idleVideo.muted = true;
-    idleVideo.playsInline = true;
-    idleVideo.setAttribute("playsinline", "");
-    idleVideo.setAttribute("webkit-playsinline", "");
-    idleVideo.preload = "auto";
-
-    const poderVideo = document.createElement("video");
-    poderVideo.src = "StreamingAssets/carlota_poder_fondo.mp4?v=" + APP_VERSION;
-    poderVideo.crossOrigin = "anonymous";
-    poderVideo.loop = false;
-    poderVideo.muted = true;
-    poderVideo.playsInline = true;
-    poderVideo.setAttribute("playsinline", "");
-    poderVideo.setAttribute("webkit-playsinline", "");
-    poderVideo.preload = "auto";
-
-    // Texturas Three.js para cada video
-    const idleTexture = new THREE.VideoTexture(idleVideo);
-    idleTexture.minFilter = THREE.LinearFilter;
-    idleTexture.magFilter = THREE.LinearFilter;
-    idleTexture.format = THREE.RGBAFormat;
-
-    const poderTexture = new THREE.VideoTexture(poderVideo);
-    poderTexture.minFilter = THREE.LinearFilter;
-    poderTexture.magFilter = THREE.LinearFilter;
-    poderTexture.format = THREE.RGBAFormat;
-
-    // Material y geometría: un solo panel normal, centrado
-    const material = new THREE.MeshBasicMaterial({
-      map: idleTexture,
-      side: THREE.DoubleSide,
-      toneMapped: false
-    });
-
-    const geometry = new THREE.PlaneGeometry(VIDEO_SCALE, VIDEO_SCALE);
-    const videoMesh = new THREE.Mesh(geometry, material);
-    // Posición centrada exactamente en el origen (0, 0, 0)
-    videoMesh.position.set(0, 0, 0);
-
-    // Al finalizar el video de poder, regresa suavemente al idle
-    poderVideo.addEventListener("ended", () => {
-      isPlayingPoder = false;
-      material.map = idleTexture;
-      material.needsUpdate = true;
-      if (isTracking) {
-        idleVideo.currentTime = 0;
-        idleVideo.play().catch(console.warn);
-      }
-    });
-
-    function triggerPoder() {
-      if (isPlayingPoder) return;
-      isPlayingPoder = true;
-
-      idleVideo.pause();
-      poderVideo.currentTime = 0;
-      material.map = poderTexture;
-      material.needsUpdate = true;
-
-      poderVideo.play().catch(err => {
-        console.warn("Error reproduciendo poder:", err);
-        // Si falla, volver a idle
-        isPlayingPoder = false;
-        material.map = idleTexture;
-        material.needsUpdate = true;
-        idleVideo.play().catch(console.warn);
-      });
+      return out;
     }
 
-    // ---------- Inicialización de AR ----------
-    async function startAR() {
+    // ---------- carga de Unity ----------
+    createUnityInstance(document.querySelector("#unity-canvas"), {
+      dataUrl: "Build/BuildWeb.data.unityweb",
+      frameworkUrl: "Build/BuildWeb.framework.js.unityweb",
+      codeUrl: "Build/BuildWeb.wasm.unityweb",
+      streamingAssetsUrl: "StreamingAssets",
+      companyName: "DefaultCompany",
+      productName: "ARColanta",
+      productVersion: "0.1.0"
+      // El canvas es opaco: el feed de la cámara se dibuja DENTRO de Unity
+      // (WebCamBackground + ARColantaVideo.jslib). El alfa del framebuffer
+      // de URP/Render Graph está roto en WebGL, no depender de él.
+    }, function (progress) {
+      statusEl.textContent = "Cargando... " + Math.round(progress * 100) + "%";
+    }).then(function (instance) {
+      unityInstance = instance;
+      statusEl.textContent = "";
+      startBtn.style.display = "block";
+      if (location.search.indexOf("autostart") >= 0) {
+        startBtn.disabled = true;
+        startAR().catch(function (e) { statusEl.textContent = "Error: " + e.message; });
+      }
+    }).catch(function (err) {
+      statusEl.textContent = "Error cargando Unity: " + err;
+    });
+
+    startBtn.addEventListener("click", function () {
       startBtn.disabled = true;
-      statusEl.textContent = "Accediendo a la cámara...";
-
-      try {
-        // Inicializar motor MindAR Three
-        mindarThree = new MindARThree({
-          container: container,
-          imageTargetSrc: TARGETS_FILE,
-          filterMinCF: 0.0001,
-          filterBeta: 0.001,
-          uiLoading: "no",
-          uiScanning: "no",
-          uiError: "yes"
-        });
-
-        const { renderer, scene, camera } = mindarThree;
-        const anchor = mindarThree.addAnchor(0);
-        anchor.group.add(videoMesh);
-
-        // Precalentar videos (importante para políticas de reproducción en iOS y Android)
-        try {
-          await idleVideo.play();
-          idleVideo.pause();
-        } catch (_) {}
-
-        statusEl.textContent = "Iniciando tracking...";
-        await mindarThree.start();
-
-        // Control de visibilidad del marcador
-        anchor.onTargetFound = () => {
-          isTracking = true;
-          scanHint.style.display = "none";
-          interactionHint.style.display = "block";
-
-          if (isPlayingPoder) {
-            poderVideo.play().catch(console.warn);
-          } else {
-            idleVideo.play().catch(console.warn);
-          }
-        };
-
-        anchor.onTargetLost = () => {
-          isTracking = false;
-          scanHint.style.display = "block";
-          interactionHint.style.display = "none";
-
-          idleVideo.pause();
-          poderVideo.pause();
-        };
-
-        // Bucle de renderizado
-        renderer.setAnimationLoop(() => {
-          renderer.render(scene, camera);
-        });
-
-        // Ocultar pantalla de bienvenida
-        overlay.classList.add("hidden");
-        scanHint.style.display = "block";
-
-        // Interacción táctil: tocar la pantalla o el panel activa el poder
-        const raycaster = new THREE.Raycaster();
-        const touchCoords = new THREE.Vector2();
-
-        function handlePointer(event) {
-          if (!isTracking) return;
-          const clientX = event.touches ? event.touches[0].clientX : event.clientX;
-          const clientY = event.touches ? event.touches[0].clientY : event.clientY;
-
-          touchCoords.x = (clientX / window.innerWidth) * 2 - 1;
-          touchCoords.y = -(clientY / window.innerHeight) * 2 + 1;
-
-          raycaster.setFromCamera(touchCoords, camera);
-          const intersects = raycaster.intersectObject(videoMesh);
-
-          // Si toca directamente a Carlota o toca la pantalla mientras la ve:
-          if (intersects.length > 0 || event.type === "touchend") {
-            triggerPoder();
-          }
-        }
-
-        window.addEventListener("click", handlePointer);
-        window.addEventListener("touchend", handlePointer);
-
-      } catch (err) {
-        console.error("Error al iniciar AR:", err);
-        statusEl.textContent = "Error: " + (err.message || err);
+      statusEl.textContent = "Encendiendo cámara...";
+      startAR().catch(function (err) {
+        statusEl.textContent = "Error: " + err.message;
         startBtn.disabled = false;
-      }
+      });
+    });
+
+    // FOV vertical que la cámara de Unity debe usar para calzar con el video
+    // recortado por object-fit: cover. MindAR usa una proyección fija de 45°;
+    // al recortar el video en pantalla, el FOV efectivo cambia por este factor.
+    function sendFov(proj) {
+      var vw = video.videoWidth, vh = video.videoHeight;
+      var cw = window.innerWidth, ch = window.innerHeight;
+      var coverScale = Math.max(cw / vw, ch / vh);
+      var fovAdjust = ch / (vh * coverScale);
+      var fovY = 2 * Math.atan((1 / proj[5]) * fovAdjust) * 180 / Math.PI;
+      unityInstance.SendMessage(UNITY_RECEIVER, "SetCameraFov", fovY.toString());
     }
 
-    startBtn.addEventListener("click", startAR);
+    // Abre la cámara trasera PRINCIPAL. En iPhone Pro, Safari con
+    // facingMode:"environment" suele elegir la ultra gran angular (FOV ~120°),
+    // pero MindAR asume ~45°: la pose sale con la escala errada y el contenido
+    // se ve muy pequeño. Se prefiere la lente "Back Camera" (principal).
+    async function openMainBackCamera() {
+      var base = { width: { ideal: 1280 }, height: { ideal: 720 } };
+      var stream = await navigator.mediaDevices.getUserMedia({
+        audio: false, video: Object.assign({ facingMode: "environment" }, base)
+      });
+      try {
+        var devices = await navigator.mediaDevices.enumerateDevices();
+        var cams = devices.filter(function (d) { return d.kind === "videoinput" && d.label; });
+        var isWideOrTele = /ultra|wide|tele|macro|0\.5|grand|amplio/i;
+        var isBack = /back|rear|environment|trasera|posterior|arri/i;
+        var main = cams.filter(function (d) { return isBack.test(d.label) && !isWideOrTele.test(d.label); });
+        // Preferir exactamente "Back Camera" frente a "Back Dual/Triple Camera".
+        main.sort(function (a, b) {
+          var ea = /^back camera$/i.test(a.label) ? 0 : 1, eb = /^back camera$/i.test(b.label) ? 0 : 1;
+          return ea - eb;
+        });
+        var current = stream.getVideoTracks()[0].getSettings().deviceId;
+        if (main.length && /^back camera$/i.test(main[0].label) && main[0].deviceId !== current) {
+          stream.getTracks().forEach(function (t) { t.stop(); });
+          stream = await navigator.mediaDevices.getUserMedia({
+            audio: false, video: Object.assign({ deviceId: { exact: main[0].deviceId } }, base)
+          });
+        }
+      } catch (e) { console.warn("No se pudo elegir la cámara principal:", e); }
+      // Si el navegador expone zoom y quedó por debajo de 1x, subir a 1x.
+      try {
+        var track = stream.getVideoTracks()[0];
+        var caps = track.getCapabilities ? track.getCapabilities() : {};
+        if (caps.zoom && caps.zoom.min < 1 && caps.zoom.max >= 1) {
+          await track.applyConstraints({ advanced: [{ zoom: 1 }] });
+        }
+      } catch (e) {}
+      return stream;
+    }
 
-    if (location.search.indexOf("autostart") >= 0) {
-      startAR();
+    // ---------- tracking con MindAR ----------
+    async function startAR() {
+      await import(MINDAR_URL); // define window.MINDAR.IMAGE
+
+      var stream = await openMainBackCamera();
+      video.srcObject = stream;
+      await new Promise(function (resolve) {
+        video.onloadedmetadata = function () { video.play(); resolve(); };
+      });
+      // MindAR lee los ATRIBUTOS width/height del elemento (no videoWidth):
+      // sin esto, drawImage no dibuja nada y el tracking falla en silencio.
+      video.setAttribute("width", video.videoWidth);
+      video.setAttribute("height", video.videoHeight);
+
+      // Unity dibuja este mismo video como fondo (un solo stream de cámara,
+      // compartido con el tracking — clave para iOS).
+      window.arVideo = video;
+      unityInstance.SendMessage(UNITY_RECEIVER, "OnVideoReady",
+        video.videoWidth + "," + video.videoHeight);
+
+      statusEl.textContent = "Preparando tracking...";
+
+      var postMatrices = [];
+
+      var controller = new window.MINDAR.IMAGE.Controller({
+        inputWidth: video.videoWidth,
+        inputHeight: video.videoHeight,
+        // Filtro OneEuro de MindAR: menos jitter
+        filterMinCF: 0.0001,
+        filterBeta: 0.001,
+        onUpdate: function (data) {
+          if (data.type !== "updateMatrix" || !unityInstance) return;
+          var i = data.targetIndex;
+          if (!postMatrices[i]) return;
+
+          if (data.worldMatrix === null) {
+            // MindAR avisa la pérdida UNA sola vez; el bridge además tiene
+            // un timeout por si este mensaje se pierde.
+            unityInstance.SendMessage(UNITY_RECEIVER, "OnTargetLost", String(i));
+          } else {
+            // postMatrix re-centra y escala igual que mindar-image-three:
+            // origen en el centro del marcador, escala = ancho en px.
+            // El primer valor es el índice del marcador (orden de targets.mind).
+            var m = mul4(data.worldMatrix, postMatrices[i]);
+            unityInstance.SendMessage(UNITY_RECEIVER, "OnTargetUpdate", i + "," + m.join(","));
+          }
+        }
+      });
+
+      var result = await controller.addImageTargets(TARGETS_FILE);
+      // Una postMatrix por marcador: dimensions[i] = [ancho, alto] en px.
+      postMatrices = result.dimensions.map(function (d) {
+        var w = d[0], h = d[1];
+        return [
+          w, 0, 0, 0,
+          0, w, 0, 0,
+          0, 0, w, 0,
+          w / 2, h / 2, 0, 1
+        ];
+      });
+
+      var proj = controller.getProjectionMatrix();
+      sendFov(proj);
+      window.addEventListener("resize", function () { sendFov(proj); });
+
+      await controller.dummyRun(video);
+
+      overlay.classList.add("hidden");
+      document.getElementById("scan-hint").style.display = "block";
+      controller.processVideo(video);
     }
   </script>
 </body>
