@@ -5,7 +5,7 @@
   <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
   <title>ARColanta - AR</title>
   <style>
-    html, body { margin: 0; padding: 0; width: 100%; height: 100%; overflow: hidden; background: #000; }
+    html, body { margin: 0; padding: 0; width: 100%; height: 100%; overflow: hidden; background: #160035; }
 
     /* Video de la cámara: capa de fondo */
     #camvideo {
@@ -27,11 +27,21 @@
       position: fixed; inset: 0; z-index: 2;
       display: flex; flex-direction: column;
       align-items: center; justify-content: center;
-      background: #1a0533; color: #fff;
+      background: #160035; color: #fff;
       font-family: sans-serif; text-align: center;
       transition: opacity 0.4s;
     }
     #overlay.hidden { opacity: 0; pointer-events: none; }
+
+    /* El fondo del logo es el mismo #160035 del overlay: se funde sin bordes.
+       Cabe completo en vertical y en horizontal, dejando sitio al botón. */
+    #logo {
+      display: block;
+      max-width: 90vw; max-height: 60vh;
+      width: auto; height: auto;
+      object-fit: contain;
+      margin-bottom: 16px;
+    }
 
     #start-button {
       padding: 14px 40px; font-size: 18px; border: none; border-radius: 30px;
@@ -52,7 +62,7 @@
   <canvas id="unity-canvas" tabindex="-1"></canvas>
 
   <div id="overlay">
-    <h2>Misión Colanta 🚀</h2>
+    <img id="logo" src="logo-exploradores.webp" alt="Exploradores del Sabor - Colanta KIDS">
     <button id="start-button">Iniciar AR</button>
     <div id="status">Cargando experiencia...</div>
   </div>
